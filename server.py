@@ -1,9 +1,9 @@
 import logging
 import os
 import select
-import socket
+from socket import socket, AF_INET, SOCK_STREAM
 import argparse
-import datetime
+from datetime import datetime
 
 # Create a folder called logs if it doesn't exist
 log_folder = "logs"
@@ -11,7 +11,7 @@ if not os.path.exists(log_folder):
     os.makedirs(log_folder)
 
 # Get the current date
-start_time = datetime.datetime.now()
+start_time = datetime.now()
 log_date = start_time.strftime("%Y-%m-%d")
 
 # Create a logger for the day
@@ -35,7 +35,7 @@ GET = "GET"
 
 # Create a socket object, AF_INET specifies that the address family is IPv4
 # SOCK_STREAM means that the socket is of type TCP
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+with socket(AF_INET, SOCK_STREAM) as s:
     # Bind the socket to our specified host and port
     s.bind((HOST, PORT))
     # Listen for incoming connections, the argument specifies the maximum number of queued connections
@@ -52,11 +52,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     clients = {}
 
     while True:
-        read_socks: list[socket.socket]
-        read_socks, _, _ = select.select(socks, [], [])
+        read_socks: list[socket] = select.select(socks, [], [])[0]
 
         # every 5 minutes, log the number of active connections
-        current_time = datetime.datetime.now()
+        current_time = datetime.now()
         if (current_time - start_time).seconds % 300 == 0:
             logging.info(f"Active sockets: {socks}")
             logging.info(f"Active clients: {clients}")
@@ -81,7 +80,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     request = data.decode()
                     logging.info(f"Request received: \n{request}")
                     request_lines = request.split("\r\n")
-                    method, path, protocol = request_lines[0].split(" ")
+                    method_line = request_lines[0]
+                    method = method_line.split(" ")[0]
                     response = ""
 
                     if method != GET:
@@ -90,7 +90,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
                     else:
                         # Create a response
-                        response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 21\r\nConnection: Closed\r\n\r\nHello im a server! :)"
+                        response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 21\r\nConnection: keep-alive\r\n\r\nHello im a server! :)"
 
                     notified_socket.sendall(response.encode())
                     logging.info(
