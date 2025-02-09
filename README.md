@@ -7,5 +7,5 @@ A small HTTP server in python made for learning purposes
     - `--port` to specify the port number (default is 6666)
     - `--host` to specify the host (default is localhost)
 3. Use curl (or any other tool) to make requests to the server, for example you can try:
-    `curl -v -X GET http://localhost:6666 -i`
+    `curl http://localhost:6666`
 4. To stop the server, press `Ctrl+C` in the terminal where the server is running.
