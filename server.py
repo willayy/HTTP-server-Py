@@ -35,7 +35,7 @@ with socket(AF_INET, SOCK_STREAM) as server_socket:
     server_clock = ServerClock()  # Create a server clock object
     log_info("# --------------------------- NEW SESSION --------------------------- #")
     print(
-        f"Server started on {HOST}:{PORT} (Ctrl+C to stop), check server.log for logs"
+        f"Server started on {HOST}:{PORT} (Ctrl+C to stop), check ./logs for server logs"
     )
 
     while True:
@@ -56,7 +56,6 @@ with socket(AF_INET, SOCK_STREAM) as server_socket:
                             notified_socket, active_sockets
                         )  # Close the connection if no data is received
                     else:
-                        log_info(f"Request received: \n{request}")
                         method = request_method(request)
                         if allowed_method(method):
                             send_response(

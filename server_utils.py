@@ -25,7 +25,12 @@ def receive_request(sock: socket) -> str:
     Receives a request from a client socket and returns it as a string.
     '''
     data = sock.recv(BUFFER_SIZE)
-    return data.decode()
+    if data:
+        request = data.decode()
+        log_info(f"\nRequest received:\n{request}")
+        return request
+    else:
+        return ""
 
 def request_method(request: str) -> str:
     '''
@@ -51,4 +56,4 @@ def send_response(socket: socket, http_header:str, content_type: str, connection
     response += f"Connection: {connection}\r\n"
     response += f"\r\n{body}"
     socket.sendall(response.encode())
-    log_info(f"Response: \n{response} \n\nsent to: {socket}")
+    log_info(f"\nResponse:\n{response}\n\nsent to: {socket}")
