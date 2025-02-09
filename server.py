@@ -1,98 +1,80 @@
-import logging
-import os
 import select
 from socket import socket, AF_INET, SOCK_STREAM
-import argparse
-from datetime import datetime
-
-# Create a folder called logs if it doesn't exist
-log_folder = "logs"
-if not os.path.exists(log_folder):
-    os.makedirs(log_folder)
-
-# Get the current date
-start_time = datetime.now()
-log_date = start_time.strftime("%Y-%m-%d")
-
-# Create a logger for the day
-logging.basicConfig(
-    filename=f"logs/{log_date}_server.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
+from argparser import init_argparse
+from server_clock import ServerClock
+from server_utils import (
+    accept_new_connections,
+    allowed_method,
+    close_connection,
+    receive_request,
+    request_method,
+    send_response,
 )
+from serverlog import init_logging, log_info, log_warning
 
-# Get host and port from the supplied arguments
-parser = argparse.ArgumentParser(description="HTTP Server")
+# Initialize logging
+init_logging()
 
-parser.add_argument("--host", type=str, help="Host name", default="127.0.0.1")
-parser.add_argument("--port", type=int, help="Port number", default=6666)
+# Initialize the argument parser
+parser = init_argparse()
 args = parser.parse_args()
 
 HOST = args.host
 PORT = args.port
-BUFFER_SIZE = 1024
-GET = "GET"
+BACKLOG = 5
 
-# Create a socket object, AF_INET specifies that the address family is IPv4
-# SOCK_STREAM means that the socket is of type TCP
-with socket(AF_INET, SOCK_STREAM) as s:
-    # Bind the socket to our specified host and port
-    s.bind((HOST, PORT))
-    # Listen for incoming connections, the argument specifies the maximum number of queued connections
-    s.listen(5)
-
-    logging.info("# --------------- NEW SESSION --------------- #")
-    start_message = f"Server started on {HOST}:{PORT}"
-    print(start_message + " (Ctrl+C to stop), check server.log for logs")
-    logging.info(start_message)
-
-    # List of sockets for select.select()
-    socks = [s]
-    # Dictionary to store address of clients
-    clients = {}
+# Create a socket object, AF_INET specifies that the address family is IPv4 SOCK_STREAM means that the socket is of type TCP
+with socket(AF_INET, SOCK_STREAM) as server_socket:
+    server_socket.bind((HOST, PORT))  # Bind the socket to our specified host and port
+    server_socket.listen(
+        BACKLOG
+    )  # Listen for incoming connections, with a backlog of n connections
+    active_sockets = [
+        server_socket
+    ]  # Create a list of sockets to keep track of active connections
+    server_clock = ServerClock()  # Create a server clock object
+    log_info("# --------------------------- NEW SESSION --------------------------- #")
+    print(
+        f"Server started on {HOST}:{PORT} (Ctrl+C to stop), check server.log for logs"
+    )
 
     while True:
-        read_socks: list[socket] = select.select(socks, [], [])[0]
 
-        # every 5 minutes, log the number of active connections
-        current_time = datetime.now()
-        if (current_time - start_time).seconds % 300 == 0:
-            logging.info(f"Active sockets: {socks}")
-            logging.info(f"Active clients: {clients}")
+        read_sockets: list[socket] = select.select(active_sockets, [], [], 1)[0]
 
-        for notified_socket in read_socks:
-            if notified_socket == s:
-                # Accept new connection
-                sock, addr = s.accept()
-                socks.append(sock)
-                clients[sock] = addr
-                logging.info(f"Connection with socket {sock}")
-            else:
-                # Receive data from existing connection
-                data = notified_socket.recv(BUFFER_SIZE)
-                if not data:
-                    # If no data is received, the connection is closed
-                    logging.info(f"Connection closed from {clients[notified_socket]}")
-                    socks.remove(notified_socket)
-                    del clients[notified_socket]
-                    notified_socket.close()
+        for notified_socket in read_sockets:
+            try:
+                if notified_socket == server_socket:
+                    accept_new_connections(
+                        server_socket, active_sockets
+                    )  # Accept new connections
                 else:
-                    request = data.decode()
-                    logging.info(f"Request received: \n{request}")
-                    request_lines = request.split("\r\n")
-                    method_line = request_lines[0]
-                    method = method_line.split(" ")[0]
-                    response = ""
-
-                    if method != GET:
-                        logging.info(f"Unsupported method: {method}")
-                        response = "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: text/html\r\nContent-Length: 25\r\nConnection: Closed\r\n\r\nOnly GET method is allowed on this server"
-
+                    # Receive data from existing connection
+                    request = receive_request(notified_socket)
+                    if not request:
+                        close_connection(
+                            notified_socket, active_sockets
+                        )  # Close the connection if no data is received
                     else:
-                        # Create a response
-                        response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 21\r\nConnection: keep-alive\r\n\r\nHello im a server! :)"
-
-                    notified_socket.sendall(response.encode())
-                    logging.info(
-                        f"Response \n{response} \n\nsent to: {notified_socket}"
-                    )
+                        log_info(f"Request received: \n{request}")
+                        method = request_method(request)
+                        if allowed_method(method):
+                            send_response(
+                                notified_socket,
+                                "200 OK",
+                                "text/html",
+                                "keep-alive",
+                                server_clock.get_up_time_sec().__str__(),
+                            )
+                        else:
+                            log_info(f"Unsupported method in request: {method}")
+                            send_response(
+                                notified_socket,
+                                "405 Method Not Allowed",
+                                "text/html",
+                                "close",
+                                "This server only supports GET requests",
+                            )
+            except (ConnectionResetError, BrokenPipeError):
+                log_warning(f"Socket {notified_socket} forcefully disconnected")
+                close_connection(notified_socket, active_sockets)
