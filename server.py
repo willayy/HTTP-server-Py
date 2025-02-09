@@ -67,7 +67,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 sock, addr = s.accept()
                 socks.append(sock)
                 clients[sock] = addr
-                logging.info(f"Connection with socket {sock} from address {addr}")
+                logging.info(f"Connection with socket {sock}")
             else:
                 # Receive data from existing connection
                 data = notified_socket.recv(BUFFER_SIZE)
@@ -79,7 +79,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     notified_socket.close()
                 else:
                     request = data.decode()
-                    logging.info(f"Request received: {request}")
+                    logging.info(f"Request received: \n{request}")
                     request_lines = request.split("\r\n")
                     method, path, protocol = request_lines[0].split(" ")
                     response = ""
@@ -94,5 +94,5 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
                     notified_socket.sendall(response.encode())
                     logging.info(
-                        f"Response {response} sent to: {clients[notified_socket]}"
+                        f"Response \n{response} \n\nsent to: {notified_socket}"
                     )
